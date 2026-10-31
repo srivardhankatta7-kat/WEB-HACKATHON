@@ -142,4 +142,5 @@ The application will be accessible at `http://localhost:5173/`.
 AgroGuide DSS is developed as an educational hackathon software solution (Problem ID: **HACK-P302**). Agricultural recommendations are advisory approximations and do not constitute legal or commercial warranties. Field decisions should incorporate local extension advice from Krishi Vigyan Kendras (KVK), district agriculture officers, and soil health testing laboratories.
 #   W E B - H A C K A T H O N  
  #   W E B - H A C K A T H O N  
+ #   W E B - H A C K A T H O N  
  
