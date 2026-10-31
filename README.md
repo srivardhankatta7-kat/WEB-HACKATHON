@@ -102,6 +102,37 @@ An advanced agricultural decision-support software application engineered for sm
 
 ---
 
+### 8. ☁️ Cloud Storage Database Integration (Google Firebase)
+- **Dual-Tier Cloud Architecture:**
+  - **Google Cloud Firestore (NoSQL Document Database):** Real-time storage of structured farm evaluations, 9-factor edaphic parameters (pH, NPK, rainfall, temperature), and personalized agronomic recommendations under the collection `agroguide_audits`.
+  - **Firebase Cloud Storage (Binary Object Store):** Secure blob storage for scanned Soil Health Cards (SHC PDFs), drone imagery, leaf disease photos, and official audit certificates under `agroguide_attachments/{auditId}/`.
+- **Key Features:**
+  - **Multi-Device Synchronization:** Instant bidirectional sync between local client storage and Cloud Firestore.
+  - **File Attachment Manager:** Attach soil test laboratory reports (PDF/JPG/PNG up to 10MB) directly to farm evaluation records with real-time upload progress and cloud download links.
+  - **In-App Cloud Settings & Credential Manager:** Seamless modal interface to configure Firebase project keys (`apiKey`, `projectId`, `storageBucket`, etc.) directly from the browser or via `.env`.
+  - **Built-in Offline-First Resiliency:** Automatic fallback to an offline-first simulated cloud sandbox when internet is disconnected or credentials are not yet entered, guaranteeing 100% uninterrupted operation in remote rural agricultural hubs.
+  - **One-Click Cloud Audit Restore:** Search, filter, and reload saved farm audits into the decision engine across any session or device.
+
+---
+
+### 9. 🔐 Authentication & Role-Based Authorization (RBAC)
+- **Credential Verification & Identity Management:**
+  - Secure login portal supporting username/email and password authentication with encrypted session tokens.
+  - User registration with role designation (Farmer, Agronomist, or Administrator).
+  - Quick 1-click preset account switcher in the portal and header navbar for frictionless evaluation.
+- **Pre-Configured Demo Accounts:**
+  | Role | Username | Password | Full Name & Organization | Clearances |
+  |---|---|---|---|---|
+  | 🌾 **Farmer** | `farmer_ramesh` | `Farmer@123` | Rameshwar Yadav (*Purvanchal FPO*) | Field inputs, crop recommendations, weather sync, audit archival |
+  | 🔬 **Agronomist** | `officer_sharma` | `Agro@2026` | Dr. Ananya Sharma (*ICAR KVK*) | All Farmer tools + Model Benchmarking, 8-Suite Automated Tests, SHC Verification |
+  | ⚙️ **Administrator** | `admin_agro` | `Admin@Agro2026` | Rajesh Verma (*Agri-Decision Directorate*) | Full system authority: Cloud database settings, database purge, model calibration |
+- **Enforced Access Control & AuthGuard:**
+  - Restricts empirical evaluation benchmarks and automated regression suites from unverified users with interactive 403 authorization gates.
+  - Database purge authority strictly restricted to Administrator clearance.
+  - Active session menu in the top navigation bar displays user affiliation, role badge, session status, and 1-click role switching.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -133,6 +164,8 @@ The application will be accessible at `http://localhost:5173/`.
 - **Build Tool:** Vite 8
 - **Styling:** Tailwind CSS v4 + Responsive Print Stylesheet
 - **Icons:** Lucide React
+- **Cloud Database:** Google Firebase Cloud Firestore (NoSQL Document Store)
+- **Cloud Object Storage:** Firebase Cloud Storage (Soil Card PDFs & Farm Photos)
 - **Linter:** Oxlint (0 errors, 0 warnings)
 - **Live Data:** Open-Meteo Forecast & Geocoding REST APIs (No API key required)
 
@@ -140,7 +173,3 @@ The application will be accessible at `http://localhost:5173/`.
 
 ## 📜 Regulatory & Safety Notice
 AgroGuide DSS is developed as an educational hackathon software solution (Problem ID: **HACK-P302**). Agricultural recommendations are advisory approximations and do not constitute legal or commercial warranties. Field decisions should incorporate local extension advice from Krishi Vigyan Kendras (KVK), district agriculture officers, and soil health testing laboratories.
-#   W E B - H A C K A T H O N  
- #   W E B - H A C K A T H O N  
- #   W E B - H A C K A T H O N  
- 

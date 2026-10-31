@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { CropRecommendation, ExampleProfile, FarmInputData, SavedAudit } from './types/crop';
+import type { CropRecommendation, ExampleProfile, FarmInputData, SavedAudit, FarmAttachment } from './types/crop';
 import type { AppTab } from './components/Header';
 import { Header } from './components/Header';
 import { SeasonBanner } from './components/SeasonBanner';
@@ -15,11 +15,23 @@ import { TestReportView } from './components/TestReportView';
 import { MethodologyLimitationsView } from './components/MethodologyLimitationsView';
 import { PrintReport } from './components/PrintReport';
 import { SavedAuditHistory } from './components/SavedAuditHistory';
+import { CloudConfigModal } from './components/CloudConfigModal';
+import {
+  saveAuditToCloud,
+  fetchAuditsFromCloud,
+  deleteAuditFromCloud,
+  clearAllAuditsFromCloud,
+  syncLocalAuditsWithCloud
+} from './services/firebase';
 import { rankCropRecommendations } from './engine/recommendationEngine';
 import { EXAMPLE_PROFILES } from './data/exampleProfiles';
 import { getCurrentAgriculturalSeason } from './utils/seasonUtils';
 import { LanguageProvider } from './context/LanguageProvider';
 import { useLanguage } from './context/LanguageContext';
+import { AuthProvider } from './context/AuthProvider';
+import { useAuth } from './context/AuthContext';
+import { LoginPage } from './components/LoginPage';
+import { AuthGuard } from './components/AuthGuard';
 import { Sprout, Sparkles, FileText, FlaskConical, BarChart3, FileCheck2, Info } from 'lucide-react';
 
 const INITIAL_FORM_DATA: FarmInputData = {
@@ -39,6 +51,7 @@ const INITIAL_FORM_DATA: FarmInputData = {
 
 function MainApp() {
   const { t, translateSoilType, translateSeason } = useLanguage();
+  const { isLoginModalOpen, closeLoginModal } = useAuth();
   const [formData, setFormData] = useState<FarmInputData>(INITIAL_FORM_DATA);
   const [activeTab, setActiveTab] = useState<AppTab>('form');
   const [engineMode, setEngineMode] = useState<'rules' | 'knn'>('rules');
@@ -47,8 +60,10 @@ function MainApp() {
   const [currentProfileId, setCurrentProfileId] = useState<string | null>('gangetic-alluvial');
   const [filterBySeasonOnly, setFilterBySeasonOnly] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState<boolean>(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
 
-  // Local storage for saved audits
+  // Local storage for saved audits with cloud metadata
   const [savedAudits, setSavedAudits] = useState<SavedAudit[]>(() => {
     try {
       const saved = localStorage.getItem('agroguide_saved_audits');
@@ -65,6 +80,33 @@ function MainApp() {
       // Ignore storage errors
     }
   }, [savedAudits]);
+
+  // Synchronize with Cloud Database on component mount
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const cloudAudits = await fetchAuditsFromCloud();
+        if (isMounted && cloudAudits.length > 0) {
+          setSavedAudits((prev) => {
+            const map = new Map<string, SavedAudit>();
+            cloudAudits.forEach((a) => map.set(a.id, a));
+            prev.forEach((a) => {
+              if (!map.has(a.id)) map.set(a.id, a);
+            });
+            return Array.from(map.values()).sort(
+              (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+          });
+        }
+      } catch (err) {
+        console.warn('Initial cloud sync skipped or offline:', err);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Compute recommendations
   const allRecommendations = useMemo(() => {
@@ -136,7 +178,7 @@ function MainApp() {
     setCompareCropIds([]);
   };
 
-  const handleSaveAudit = () => {
+  const handleSaveAudit = async (attachments?: FarmAttachment[]) => {
     const topRec = allRecommendations[0];
     const newAudit: SavedAudit = {
       id: `AUDIT-${Date.now().toString(36).toUpperCase()}`,
@@ -150,11 +192,52 @@ function MainApp() {
       title: `${formData.farmLocation || 'Field'} - ${formData.soilType} (${formData.season})`,
       inputs: { ...formData },
       topCrop: topRec ? topRec.crop.name : 'None',
-      topScore: topRec ? topRec.overallScore : 0
+      topScore: topRec ? topRec.overallScore : 0,
+      attachments: attachments || [],
+      cloudSynced: false
     };
 
     setSavedAudits((prev) => [newAudit, ...prev]);
-    showToast('Audit report archived to local history!');
+
+    // Save to Cloud Firestore & Cloud Storage metadata
+    try {
+      const res = await saveAuditToCloud(newAudit);
+      if (res.success) {
+        setSavedAudits((prev) =>
+          prev.map((a) => (a.id === newAudit.id ? { ...a, cloudSynced: true, cloudId: res.cloudId } : a))
+        );
+        showToast('Audit report synchronized with Cloud Database!');
+      }
+    } catch {
+      showToast('Saved locally; will sync with Cloud once connected.');
+    }
+  };
+
+  const handleUpdateAuditAttachments = async (auditId: string, attachments: FarmAttachment[]) => {
+    setSavedAudits((prev) =>
+      prev.map((a) => {
+        if (a.id === auditId) {
+          const updated = { ...a, attachments };
+          saveAuditToCloud(updated).catch(() => {});
+          return updated;
+        }
+        return a;
+      })
+    );
+    showToast('Cloud attachments updated successfully.');
+  };
+
+  const handleSyncCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const res = await syncLocalAuditsWithCloud(savedAudits);
+      setSavedAudits(res.merged);
+      showToast(`Cloud Sync Complete: ${res.syncedCount} audit(s) synced.`);
+    } catch {
+      showToast('Cloud sync encountered an issue. Please check settings.');
+    } finally {
+      setIsSyncingCloud(false);
+    }
   };
 
   const handleLoadAudit = (audit: SavedAudit) => {
@@ -163,14 +246,16 @@ function MainApp() {
     showToast(`Loaded saved audit: ${audit.title}`);
   };
 
-  const handleDeleteAudit = (id: string) => {
+  const handleDeleteAudit = async (id: string) => {
     setSavedAudits((prev) => prev.filter((a) => a.id !== id));
-    showToast('Audit record removed from history.');
+    await deleteAuditFromCloud(id).catch(() => {});
+    showToast('Audit record removed from cloud and local storage.');
   };
 
-  const handleClearAllAudits = () => {
+  const handleClearAllAudits = async () => {
     setSavedAudits([]);
-    showToast('Cleared all archived audits.');
+    await clearAllAuditsFromCloud().catch(() => {});
+    showToast('Cleared all archived audits from cloud database.');
   };
 
   return (
@@ -181,6 +266,7 @@ function MainApp() {
         setActiveTab={setActiveTab}
         comparedCount={compareCropIds.length}
         savedCount={savedAudits.length}
+        onOpenCloudSettings={() => setIsCloudModalOpen(true)}
       />
 
       {/* Floating Toast Notification */}
@@ -290,15 +376,31 @@ function MainApp() {
         )}
 
         {/* Tab 5: Empirical Model Evaluation (Labelled Dataset) */}
-        {activeTab === 'evaluation' && <ModelEvaluationView />}
+        {activeTab === 'evaluation' && (
+          <AuthGuard
+            permission="VIEW_MODEL_EVALUATION"
+            fallbackTitle="Empirical Model Benchmarking Restricted"
+            fallbackDescription="Access to ground-truth dataset cross-validation, confusion matrices, and precision-recall curves is restricted to certified Agronomists and System Administrators."
+          >
+            <ModelEvaluationView />
+          </AuthGuard>
+        )}
 
         {/* Tab 6: Comparison Results & Short Test Report */}
-        {activeTab === 'testreport' && <TestReportView />}
+        {activeTab === 'testreport' && (
+          <AuthGuard
+            permission="RUN_TEST_SUITE"
+            fallbackTitle="Automated Verification Test Suite Restricted"
+            fallbackDescription="Executing the 8-suite regression test runner and cryptographic SHA256 integrity report generation requires Agronomist or Administrator clearance."
+          >
+            <TestReportView />
+          </AuthGuard>
+        )}
 
         {/* Tab 7: Documented Methodology & Inherent Limitations */}
         {activeTab === 'methodology' && <MethodologyLimitationsView />}
 
-        {/* Tab 8: Saved Local History */}
+        {/* Tab 8: Saved Cloud & Local History */}
         {activeTab === 'saved' && (
           <SavedAuditHistory
             savedAudits={savedAudits}
@@ -306,6 +408,10 @@ function MainApp() {
             onDeleteAudit={handleDeleteAudit}
             onClearAll={handleClearAllAudits}
             onNavigateToForm={() => setActiveTab('form')}
+            onOpenCloudSettings={() => setIsCloudModalOpen(true)}
+            onSyncCloud={handleSyncCloud}
+            isSyncing={isSyncingCloud}
+            onUpdateAuditAttachments={handleUpdateAuditAttachments}
           />
         )}
 
@@ -319,6 +425,16 @@ function MainApp() {
         )}
       </main>
 
+      {/* Cloud Configuration Modal */}
+      <CloudConfigModal
+        key={isCloudModalOpen ? 'open' : 'closed'}
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        onSyncNow={handleSyncCloud}
+        isSyncing={isSyncingCloud}
+        totalAuditsCount={savedAudits.length}
+      />
+
       {/* Crop Detail Modal Dialog */}
       {selectedCropForDetail && (
         <CropDetailModal
@@ -328,6 +444,12 @@ function MainApp() {
           isComparing={compareCropIds.includes(selectedCropForDetail.crop.id)}
         />
       )}
+
+      {/* Authentication & Authorization Login Portal */}
+      <LoginPage
+        isOpen={isLoginModalOpen}
+        onClose={closeLoginModal}
+      />
 
       {/* Global Footer */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-8 border-t border-slate-800 no-print mt-12">
@@ -387,8 +509,10 @@ function MainApp() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <MainApp />
-    </LanguageProvider>
+    <AuthProvider>
+      <LanguageProvider>
+        <MainApp />
+      </LanguageProvider>
+    </AuthProvider>
   );
 }

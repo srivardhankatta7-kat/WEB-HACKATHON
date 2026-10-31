@@ -125,6 +125,70 @@ export interface ExampleProfile {
   input: FarmInputData;
 }
 
+// --- Authentication & Role-Based Authorization ---
+export type UserRole = 'farmer' | 'agronomist' | 'admin' | 'guest';
+
+export type AppPermission =
+  | 'VIEW_RECOMMENDATIONS'
+  | 'SAVE_AUDITS'
+  | 'UPLOAD_SOIL_CARDS'
+  | 'VIEW_MODEL_EVALUATION'
+  | 'RUN_TEST_SUITE'
+  | 'CONFIGURE_CLOUD_STORAGE'
+  | 'CLEAR_DATABASE'
+  | 'EXPORT_OFFICIAL_REPORTS';
+
+export interface User {
+  id: string;
+  username: string;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  organization?: string;
+  district?: string;
+  token?: string;
+  createdAt: string;
+}
+
+export interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  token: string | null;
+  role: UserRole;
+}
+
+export interface FarmAttachment {
+  id: string;
+  name: string;
+  url: string;
+  path: string;
+  size: number;
+  mimeType: string;
+  uploadedAt: string;
+}
+
+export interface FirebaseConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId?: string;
+}
+
+export type CloudMode = 'firebase' | 'simulated';
+
+export interface CloudSyncStatus {
+  status: 'connected' | 'simulated' | 'syncing' | 'error' | 'offline';
+  lastSyncedAt?: string;
+  pendingCount: number;
+  activeProvider: 'Firebase Firestore & Cloud Storage' | 'Simulated Cloud (Offline-First)';
+  projectId?: string;
+  storageBucket?: string;
+  errorMessage?: string;
+}
+
 export interface SavedAudit {
   id: string;
   timestamp: string;
@@ -132,6 +196,11 @@ export interface SavedAudit {
   inputs: FarmInputData;
   topCrop: string;
   topScore: number;
+  cloudSynced?: boolean;
+  cloudId?: string;
+  syncedAt?: string;
+  attachments?: FarmAttachment[];
+  notes?: string;
 }
 
 // --- Language Support ---
